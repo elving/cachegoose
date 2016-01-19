@@ -28,23 +28,16 @@ module.exports = function(mongoose, cache, debug) {
         if (!isLean) {
           let constructor = mongoose.model(model);
 
-          if (Array.isArray(cachedResults)) {
-            Promise.all(cachedResults.map(inflateModel(constructor, populate))).then((models) => {
-              cachedResults = models;
-              if (debug) cachedResults._fromCache = true;
-              promise.resolve(null, cachedResults);
-            });
-          } else {
-            inflateModel(constructor, populate)(cachedResults).then((model) => {
-              cachedResults = model;
-              if (debug) cachedResults._fromCache = true;
-              promise.resolve(null, cachedResults);
-            });
-          }
-        } else {
-          if (debug) cachedResults._fromCache = true;
-          promise.resolve(null, cachedResults);
+          cachedResults = Array.isArray(cachedResults)
+            ? cachedResults.map(inflateModel(constructor, populate))
+            : inflateModel(constructor, populate)(cachedResults);
         }
+
+        if (debug) {
+          cachedResults._fromCache = true;
+        }
+
+        promise.resolve(null, cachedResults);
       } else {
         exec.call(this).onResolve((err, results) => {
           if (err) return promise.resolve(err);
@@ -84,15 +77,13 @@ module.exports = function(mongoose, cache, debug) {
 
     return generateKey(key);
   };
-};
 
-function inflateModel(constructor, populate) {
-  const fieldsToPopulate = populate ? Object.keys(populate) : [];
+  function inflateModel(constructor, populate) {
+    const fieldsToPopulate = populate ? Object.keys(populate) : [];
 
-  return (data) => {
-    return new Promise((resolve, reject) => {
+    return (data) => {
       if (constructor.inflate) {
-        return resolve(constructor.inflate(data));
+        return constructor.inflate(data);
       } else {
         let model = constructor(data);
 
@@ -102,16 +93,15 @@ function inflateModel(constructor, populate) {
         if (fieldsToPopulate.length) {
           for (let field of fieldsToPopulate) {
             if (data[field]) {
-              model.set(field, data[field].map((_populated) => _populated._id));
-              model.populate(field);
+              model.set(field, data[field], mongoose.Schema.Types.Mixed);
             }
           }
 
-          return model.execPopulate().then(resolve);
+          return model;
         } else {
-          return resolve(model);
+          return model;
         }
       }
-    });
-  };
-}
+    };
+  }
+};

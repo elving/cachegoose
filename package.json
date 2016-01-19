@@ -22,7 +22,7 @@
   "scripts": {
     "test": "npm run build && ./node_modules/.bin/mocha",
     "build": "./node_modules/.bin/babel lib-src --out-dir lib",
-    "prepublish": "npm run build"
+    "postinstall": "npm run build"
   },
   "repository": {
     "type": "git",

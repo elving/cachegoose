@@ -39,6 +39,10 @@ describe('cachegoose', function() {
     Record = mongoose.model('Record', RecordSchema);
 
     PlayerSchema = new Schema({
+      date: {
+        type: Date,
+        default: Date.now
+      },
       records: [{ type: Schema.ObjectId, ref: 'Record' }]
     });
 
@@ -288,14 +292,16 @@ describe('cachegoose', function() {
 
   it('should correctly cache queries using populate', function(done) {
     getWithPopulate(60, function(err, res) {
-      // res.length.should.equal(1);
       Boolean(res._fromCache).should.be.false;
-      res.records[0].should.be.an.Object;
+      res.records[0].should.exist;
+      res.records[0]._id.should.exist;
+      res.records[0].date.should.exist;
 
       getWithPopulate(60, function(err, res) {
-        // res.length.should.equal(1);
         Boolean(res._fromCache).should.be.true;
-        res.records[0].should.be.an.Object;
+        res.records[0].should.exist;
+        res.records[0]._id.should.exist;
+        res.records[0].date.should.exist;
         done();
       });
     });
@@ -337,7 +343,7 @@ function getWithLimit(limit, ttl, cb) {
 }
 
 function getWithPopulate(ttl, cb) {
-  return Player.findOne().populate('records').cache(ttl).exec(cb);
+  return Player.findOne({}).populate('records').sort('-date').cache(ttl).exec(cb);
 }
 
 function getNone(ttl, cb) {
