@@ -18,6 +18,7 @@ module.exports = function(mongoose, cache, debug) {
       , isLean  = this._mongooseOptions.lean
       , model   = this.model.modelName
       , promise = new mongoose.Promise()
+      , populate = this._mongooseOptions.populate
       ;
 
     promise.onResolve(callback);
@@ -26,13 +27,24 @@ module.exports = function(mongoose, cache, debug) {
       if (cachedResults) {
         if (!isLean) {
           let constructor = mongoose.model(model);
-          cachedResults = Array.isArray(cachedResults) ?
-            cachedResults.map(inflateModel(constructor)) :
-            inflateModel(constructor)(cachedResults);
-        }
 
-        if (debug) cachedResults._fromCache = true;
-        promise.resolve(null, cachedResults);
+          if (Array.isArray(cachedResults)) {
+            Promise.all(cachedResults.map(inflateModel(constructor, populate))).then((models) => {
+              cachedResults = models;
+              if (debug) cachedResults._fromCache = true;
+              promise.resolve(null, cachedResults);
+            });
+          } else {
+            inflateModel(constructor, populate)(cachedResults).then((model) => {
+              cachedResults = model;
+              if (debug) cachedResults._fromCache = true;
+              promise.resolve(null, cachedResults);
+            });
+          }
+        } else {
+          if (debug) cachedResults._fromCache = true;
+          promise.resolve(null, cachedResults);
+        }
       } else {
         exec.call(this).onResolve((err, results) => {
           if (err) return promise.resolve(err);
@@ -74,15 +86,32 @@ module.exports = function(mongoose, cache, debug) {
   };
 };
 
-function inflateModel(constructor) {
+function inflateModel(constructor, populate) {
+  const fieldsToPopulate = populate ? Object.keys(populate) : [];
+
   return (data) => {
-    if (constructor.inflate) {
-      return constructor.inflate(data);
-    } else {
-      let model = constructor(data);
-      model.$__reset();
-      model.isNew = false;
-      return model;
-    }
+    return new Promise((resolve, reject) => {
+      if (constructor.inflate) {
+        return resolve(constructor.inflate(data));
+      } else {
+        let model = constructor(data);
+
+        model.$__reset();
+        model.isNew = false;
+
+        if (fieldsToPopulate.length) {
+          for (let field of fieldsToPopulate) {
+            if (data[field]) {
+              model.set(field, data[field].map((_populated) => _populated._id));
+              model.populate(field);
+            }
+          }
+
+          return model.execPopulate().then(resolve);
+        } else {
+          return resolve(model);
+        }
+      }
+    });
   };
 }

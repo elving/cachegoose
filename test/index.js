@@ -9,6 +9,8 @@ var async      = require('async')
   , Schema     = mongoose.Schema
   , RecordSchema
   , Record
+  , PlayerSchema
+  , Player
   , cache
   , db
   ;
@@ -35,6 +37,12 @@ describe('cachegoose', function() {
     });
 
     Record = mongoose.model('Record', RecordSchema);
+
+    PlayerSchema = new Schema({
+      records: [{ type: Schema.ObjectId, ref: 'Record' }]
+    });
+
+    Player = mongoose.model('Player', PlayerSchema);
   });
 
   beforeEach(function(done) {
@@ -43,7 +51,9 @@ describe('cachegoose', function() {
 
   afterEach(function(done) {
     Record.remove(function() {
-      cache.clear(done);
+      Player.remove(function() {
+        cache.clear(done);
+      });
     });
   });
 
@@ -275,7 +285,24 @@ describe('cachegoose', function() {
       });
     });
   });
+
+  it('should correctly cache queries using populate', function(done) {
+    getWithPopulate(60, function(err, res) {
+      // res.length.should.equal(1);
+      Boolean(res._fromCache).should.be.false;
+      res.records[0].should.be.an.Object;
+
+      getWithPopulate(60, function(err, res) {
+        // res.length.should.equal(1);
+        Boolean(res._fromCache).should.be.true;
+        res.records[0].should.be.an.Object;
+        done();
+      });
+    });
+  });
 });
+
+
 
 function getAll(ttl, cb) {
   return Record.find({}).cache(ttl).exec(cb);
@@ -303,6 +330,14 @@ function getWithSkip(skip, ttl, cb) {
 
 function getWithLimit(limit, ttl, cb) {
   return Record.find({}).limit(limit).cache(ttl).exec(cb);
+}
+
+function getWithLimit(limit, ttl, cb) {
+  return Record.find({}).limit(limit).cache(ttl).exec(cb);
+}
+
+function getWithPopulate(ttl, cb) {
+  return Player.findOne().populate('records').cache(ttl).exec(cb);
 }
 
 function getNone(ttl, cb) {
@@ -345,5 +380,11 @@ function generate (amount, cb) {
     count++;
   }
 
-  Record.create(records, cb);
+  Record.create(records, function(err, records) {
+    Player.create({
+      records: records.map(function(record) {
+        return record._id;
+      })
+    }, cb);
+  });
 }
